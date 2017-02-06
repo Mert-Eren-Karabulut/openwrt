@@ -156,11 +156,17 @@ define Device/smartrg-sr400ac
   IMAGE/trx := append-rootfs | trx-serial
 endef
 
+define Device/edgecore-ecw7220-l
+  IMAGES := trx
+  IMAGE/trx := append-ubi | trx-nand
+  KERNEL := kernel-bin | append-dtb
+endef
+
 TARGET_DEVICES += \
 	buffalo-wzr-1750dhp buffalo-wzr-600dhp2 buffalo-wzr-900dhp \
 	buffalo-wxr-1900dhp \
 	netgear-r6250 netgear-r6300-v2 netgear-r8000 \
-	smartrg-sr400ac
+	smartrg-sr400ac edgecore-ecw7220-l
 
 $(eval $(call AsusDevice,rt-ac56u,RT-AC56U))
 $(eval $(call AsusDevice,rt-ac68u,RT-AC68U))
