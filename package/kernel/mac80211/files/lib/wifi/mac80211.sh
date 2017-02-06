@@ -102,6 +102,7 @@ detect_mac80211() {
 		if [ -n "$path" ]; then
 			path="${path##/sys/devices/}"
 			case "$path" in
+				platform*/*axi*) path="${path}";;
 				platform*/pci*) path="${path##platform/}";;
 			esac
 			dev_id="	option path	'$path'"
