@@ -1,26 +1,40 @@
-From: Florian Fainelli <f.fainelli@gmail.com>
-Subject: [PATCH] ARM: BCM5301x: Disable MMU and Dcache during decompression
-Date: Tue, 14 Jul 2015 16:12:08 -0700
+From: =?UTF-8?q?Rafa=C5=82=20Mi=C5=82ecki?= <rafal@milecki.pl>
+Date: Wed, 24 Sep 2014 22:14:07 +0200
+Subject: [PATCH] ARM: BCM5301X: Disable MMU and Dcache during decompression
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
 
-Use the existing __armv7_mmu_cache_flush() to perform the cache flush
-since this does what we are after.
+Broadcom devices have broken CFE (bootloader) that leaves hardware in an
+invalid state. It causes problems with booting Linux. On Northstar
+devices kernel was randomly hanging in ~25% of tries during early init.
+Hangs used to happen at random places in the start_kernel. On BCM53573
+kernel doesn't even seem to start booting.
 
-Signed-off-by: Florian Fainelli <f.fainelli@gmail.com>
+To workaround this problem we need to do following very early:
+1) Clear 2 following bits in the SCTLR register:
+#define CR_M    (1 << 0)        /* MMU enable */
+#define CR_C    (1 << 2)        /* Dcache enable */
+2) Flush the whole D-cache
+3) Disable L2 cache
+
+Unfortunately this patch is not upstreamable as it does above things
+unconditionally. We can't check if we are running on Broadcom platform
+in any safe way and doing such hacks with ARCH_MULTI_V7 is unacceptable
+as it could break other devices support.
+
+Signed-off-by: Rafał Miłecki <rafal@milecki.pl>
 ---
- arch/arm/boot/compressed/Makefile                |  4 +++
- arch/arm/boot/compressed/head-bcm_5301x-mpcore.S | 37 ++++++++++++++++++++++++
- arch/arm/boot/compressed/head.S                  |  2 ++
- 3 files changed, 43 insertions(+)
- create mode 100644 arch/arm/boot/compressed/head-bcm_5301x-mpcore.S
 
 --- a/arch/arm/boot/compressed/Makefile
 +++ b/arch/arm/boot/compressed/Makefile
-@@ -31,6 +31,10 @@ ifeq ($(CONFIG_ARCH_ACORN),y)
+@@ -31,6 +31,11 @@ ifeq ($(CONFIG_ARCH_ACORN),y)
  OBJS		+= ll_char_wr.o font.o
  endif
  
 +ifeq ($(CONFIG_ARCH_BCM_5301X),y)
 +OBJS		+= head-bcm_5301x-mpcore.o
++OBJS		+= cache-v7-min.o
 +endif
 +
  ifeq ($(CONFIG_ARCH_SA1100),y)
@@ -57,7 +71,7 @@ Signed-off-by: Florian Fainelli <f.fainelli@gmail.com>
 +	nop
 +
 +	@ Call the cache invalidation routine
-+	bl	__armv7_mmu_cache_flush_fn
++	bl	v7_flush_dcache_all
 +	nop
 +	mov	r0,#0
 +	ldr	r3, =0x19022000			@ L2 cache controller, control reg
@@ -66,21 +80,22 @@ Signed-off-by: Florian Fainelli <f.fainelli@gmail.com>
 +
 +	@ Restore
 +	mov	r8, r12
---- a/arch/arm/boot/compressed/head.S
-+++ b/arch/arm/boot/compressed/head.S
-@@ -1152,6 +1152,7 @@ __armv7_mmu_cache_flush:
- hierarchical:
- 		mcr	p15, 0, r10, c7, c10, 5	@ DMB
- 		stmfd	sp!, {r0-r7, r9-r11}
-+ENTRY(__armv7_mmu_cache_flush_fn)
- 		mrc	p15, 1, r0, c0, c0, 1	@ read clidr
- 		ands	r3, r0, #0x7000000	@ extract loc from clidr
- 		mov	r3, r3, lsr #23		@ left align loc bit field
-@@ -1201,6 +1202,7 @@ iflush:
- 		mcr	p15, 0, r10, c7, c10, 4	@ DSB
- 		mcr	p15, 0, r10, c7, c5, 4	@ ISB
- 		mov	pc, lr
-+ENDPROC(__armv7_mmu_cache_flush_fn)
+--- a/arch/arm/boot/compressed/cache-v7-min.S
++++ b/arch/arm/boot/compressed/cache-v7-min.S
+@@ -12,6 +12,7 @@
  
- __armv5tej_mmu_cache_flush:
- 		tst	r4, #1
+ #include <linux/linkage.h>
+ #include <linux/init.h>
++#include <asm/assembler.h>
+ 
+ 	__INIT
+ 
+@@ -63,7 +64,7 @@ loop2:
+  ARM(	orr	r11, r11, r9, lsl r2	)	@ factor index number into r11
+  THUMB(	lsl	r6, r9, r2		)
+  THUMB(	orr	r11, r11, r6		)	@ factor index number into r11
+-	mcr	p15, 0, r11, c7, c14, 2		@ clean & invalidate by set/way
++	mcr     p15, 0, r11, c7, c6, 2		@ clean & invalidate by set/way
+ 	subs	r9, r9, #1			@ decrement the index
+ 	bge	loop2
+ 	subs	r4, r4, #1			@ decrement the way
