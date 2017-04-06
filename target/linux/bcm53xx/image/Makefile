@@ -46,7 +46,7 @@ define Build/trx-nand
 		-o $@.new \
 		-m 33554432 \
 		-f $(word 1,$^) -a 0x20000 -b 0x400000 \
-		-f $@ \
+		-F $@ \
 		-A $(KDIR)/ubi_mark -a 0x20000
 	mv $@.new $@
 endef
